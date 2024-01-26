@@ -174,7 +174,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, currentUser, "Current user fetched successfully."));
 })
 
-const updateUserInfo = asyncHandler(async(req, res) => {
+const updateAccountDetails = asyncHandler(async(req, res) => {
     const{ username, email, fullname } = req.body;
     if(!username || !email || !fullname) throw new ApiError(400, "Please peovide non-empty fields to update.");
 
@@ -244,6 +244,78 @@ const updateCoverImage = asyncHandler(async(req, res) => {
     .json(new ApiResponse(200, user, "Cover image updated successfully"));
 })
 
+const getUserChannelProfile = asyncHandler(async(req, res) => {
+    const{ username } = req.params;
+    if(!username) throw new ApiError(400, "Bad request.")
+
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.trim().toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                "subscribersCount": {
+                    $size: "$subscribers"
+                },
+                "channelsSubscribedToCount": {
+                    $size: "$subscribedTo"
+                },
+                "isSubscribed": {
+                    $cond: {
+                        $if: {
+                            $in: [req.user?._id, "$subscribers.subscriber"]
+                        },
+                        $then: true,
+                        $else: false
+                    },
+                }
+            }
+        },
+        {
+            $project: {
+                username: 1,
+                email: 1,
+                fullname: 1,
+                avatar: 1,
+                coverImage: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1
+            }
+        }
+    ])
+    console.log("channel", channel);
+
+    if(!channel?.length) throw new ApiError(404, `Channel with this username: ${username} does not exist.`);
+
+    return res.status(200)
+    .json(new ApiResponse
+        (
+            200,
+            {"channel data": channel[0]},
+            "User channel fetched successfully."
+        )
+    );
+})
+
 async function generateAccessandRefreshToken (user) {
     try {
         const accessToken = user.generateAccessToken();
@@ -268,7 +340,7 @@ export {
     refreshAccessToken,
     changePassword,
     getCurrentUser,
-    updateUserInfo,
+    updateAccountDetails,
     updateAvatarImage,
     updateCoverImage
 }
