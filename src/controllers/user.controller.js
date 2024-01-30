@@ -5,6 +5,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const options = {
     httpOnly: true,
@@ -316,6 +317,51 @@ const getUserChannelProfile = asyncHandler(async(req, res) => {
     );
 })
 
+const getUserWatchHistory = asyncHandler(async(req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user?._id)
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner"
+                        }
+                    },
+                    {
+                        $project: {
+                            username: 1,
+                            fullname: 1,
+                            avatar: 1,
+                        }
+                    },
+                    {
+                        $addFields: {
+                            "owner": {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res.status(200).
+    json(new ApiResponse(200, user[0].watchHistory, "User watch hostory fetched successfully."))
+})
+
 async function generateAccessandRefreshToken (user) {
     try {
         const accessToken = user.generateAccessToken();
@@ -342,5 +388,7 @@ export {
     getCurrentUser,
     updateAccountDetails,
     updateAvatarImage,
-    updateCoverImage
+    updateCoverImage,
+    getUserChannelProfile,
+    getUserWatchHistory
 }
